@@ -14,18 +14,37 @@ const mammoth = require("mammoth");
 const streamifier = require("streamifier");
 
 // helper function to upload buffer to cloudinary
-const uploadToCloudinary = (buffer) => {
+// const uploadToCloudinary = (buffer) => {
+//   return new Promise((resolve, reject) => {
+//     const stream = cloudinary.uploader.upload_stream(
+//       {
+//         resource_type: "raw",
+//         folder: "recruit-ai-resumes",
+//         public_id: req.file.originalname,
+//       },
+//       (error, result) => {
+//         if (error) reject(error);
+//         else resolve(result);
+//       }
+//     );
+
+//     streamifier.createReadStream(buffer).pipe(stream);
+//   });
+// };
+
+const uploadToCloudinary = (buffer, originalName) => {
   return new Promise((resolve, reject) => {
     const stream = cloudinary.uploader.upload_stream(
       {
         resource_type: "raw",
         folder: "recruit-ai-resumes",
-        public_id: req.file.originalname,
+        public_id: Date.now() + "-" + originalName,
+        format: originalName.split(".").pop(), // ✅ VERY IMPORTANT
       },
       (error, result) => {
         if (error) reject(error);
         else resolve(result);
-      }
+      },
     );
 
     streamifier.createReadStream(buffer).pipe(stream);
@@ -42,7 +61,7 @@ exports.uploadResume = async (req, res) => {
     let extractedText = "";
     let extractedSkills = [];
 
-    const fileBuffer = req.file.buffer;   // ✅ use buffer instead of path
+    const fileBuffer = req.file.buffer; // ✅ use buffer instead of path
     const fileType = req.file.mimetype;
 
     try {
@@ -63,13 +82,14 @@ exports.uploadResume = async (req, res) => {
 
       // extract skills
       extractedSkills = extractSkills(extractedText);
-
     } catch (parseError) {
       console.error("Text extraction failed:", parseError.message);
     }
 
     // upload to cloudinary using buffer
-    const result = await uploadToCloudinary(fileBuffer);
+    // const result = await uploadToCloudinary(fileBuffer);
+
+    const result = await uploadToCloudinary(fileBuffer, req.file.originalname);
 
     // update user
     await User.findByIdAndUpdate(
@@ -79,7 +99,7 @@ exports.uploadResume = async (req, res) => {
         resumeText: extractedText,
         skills: extractedSkills,
       },
-      { returnDocument: "after" }
+      { returnDocument: "after" },
     );
 
     res.status(200).json({
@@ -87,7 +107,6 @@ exports.uploadResume = async (req, res) => {
       resume: result.secure_url,
       skills: extractedSkills,
     });
-
   } catch (error) {
     console.error("Resume upload error:", error.message);
 
