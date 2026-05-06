@@ -20,6 +20,7 @@ const uploadToCloudinary = (buffer) => {
       {
         resource_type: "raw",
         folder: "recruit-ai-resumes",
+        public_id: req.file.originalname,
       },
       (error, result) => {
         if (error) reject(error);
