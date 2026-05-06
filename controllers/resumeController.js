@@ -1,64 +1,76 @@
 const cloudinary = require("../config/cloudinary");
-const fs = require("fs");
 const User = require("../models/User");
 
 // Ai skill extraction utility
 const { extractSkills } = require("../ai/skillExtractor");
 
-// Pdf parser for extracting text
+// Pdf parser
 const pdfParse = require("pdf-parse");
 
-// Docx parser support
+// Docx parser
 const mammoth = require("mammoth");
+
+// Required for streaming buffer to Cloudinary
+const streamifier = require("streamifier");
+
+// helper function to upload buffer to cloudinary
+const uploadToCloudinary = (buffer) => {
+  return new Promise((resolve, reject) => {
+    const stream = cloudinary.uploader.upload_stream(
+      {
+        resource_type: "raw",
+        folder: "recruit-ai-resumes",
+      },
+      (error, result) => {
+        if (error) reject(error);
+        else resolve(result);
+      }
+    );
+
+    streamifier.createReadStream(buffer).pipe(stream);
+  });
+};
 
 exports.uploadResume = async (req, res) => {
   try {
-    // Validate file upload
+    // check file exists
     if (!req.file) {
       return res.status(400).json({ message: "No file uploaded" });
     }
 
-    let extractedText = "";   // Stores resume text
-    let extractedSkills = []; // Stores extracted skills
+    let extractedText = "";
+    let extractedSkills = [];
 
-    // Get uploaded file details
-    const filePath = req.file.path;
+    const fileBuffer = req.file.buffer;   // ✅ use buffer instead of path
     const fileType = req.file.mimetype;
 
     try {
-      // Text Extraction
-      // Handle Pdf files
+      // PDF
       if (fileType === "application/pdf") {
-        const dataBuffer = fs.readFileSync(filePath);
-        const pdfData = await pdfParse(dataBuffer);
+        const pdfData = await pdfParse(fileBuffer);
         extractedText = pdfData.text || "";
       }
 
-      // Handle DOCX files
+      // DOCX
       else if (
         fileType ===
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
       ) {
-        const result = await mammoth.extractRawText({ path: filePath });
+        const result = await mammoth.extractRawText({ buffer: fileBuffer });
         extractedText = result.value || "";
       }
 
-      // Extract skills from resume text
+      // extract skills
       extractedSkills = extractSkills(extractedText);
 
     } catch (parseError) {
       console.error("Text extraction failed:", parseError.message);
     }
 
-    //  Cloud upload
-    // Upload resume file to Cloudinary
-    const result = await cloudinary.uploader.upload(filePath, {
-      resource_type: "raw",
-      folder: "recruit-ai-resumes",
-    });
+    // upload to cloudinary using buffer
+    const result = await uploadToCloudinary(fileBuffer);
 
-    //  Database update 
-    // Save resume URL + extracted data in user profile
+    // update user
     await User.findByIdAndUpdate(
       req.user.id,
       {
@@ -66,13 +78,8 @@ exports.uploadResume = async (req, res) => {
         resumeText: extractedText,
         skills: extractedSkills,
       },
-      {
-        returnDocument: "after",
-      }
+      { returnDocument: "after" }
     );
-
-    // Remove file from local storage after upload
-    fs.unlinkSync(filePath);
 
     res.status(200).json({
       message: "Resume uploaded successfully",
@@ -80,12 +87,12 @@ exports.uploadResume = async (req, res) => {
       skills: extractedSkills,
     });
 
-    } catch (error) {
-      console.error("Resume upload error:", error.message);
+  } catch (error) {
+    console.error("Resume upload error:", error.message);
 
-      res.status(500).json({
-        message: "Upload failed",
-        error: error.message,
-      });
-    }
+    res.status(500).json({
+      message: "Upload failed",
+      error: error.message,
+    });
+  }
 };

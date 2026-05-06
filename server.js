@@ -19,7 +19,15 @@ const app = express();
 connectDB();
 
 //  Middleware 
-app.use(cors());           // Enable cross-origin requests- Allows frontend and backend to talk to each other
+// app.use(cors());           // Enable cross-origin requests- Allows frontend and backend to talk to each other
+
+app.use(
+  cors({
+    origin: ["http://localhost:5173", "https://recruit-ai-client.vercel.app"],
+    credentials: true,
+  })
+);
+
 app.use(express.json());   // Parse JSON request body- Converts incoming JSON data into a JavaScript object
 
 // Routes
